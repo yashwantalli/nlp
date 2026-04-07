@@ -15,7 +15,7 @@ A smart chatbot that understands natural language queries and recommends movies 
 ---
 
 ## Project structure
-
+```bash
 ├── app.py
 ├── chatbot.py
 ├── cleaned_movies.csv
@@ -24,7 +24,7 @@ A smart chatbot that understands natural language queries and recommends movies 
 ├── requirements.txt
 ├── tmdb_5000_credits.csv
 └── tmdb_5000_movies.csv
-
+```
 
 ---
 
