@@ -33,7 +33,7 @@ A smart chatbot that understands natural language queries and recommends movies 
 ### 1️ Clone the repository
 
 ```bash
-git clone https://github.com/your-username/your-repo.git
+git clone [https://github.com/your-username/your-repo.git](https://github.com/yashwantalli/nlp.git)
 cd your-repo
 ```
 
