@@ -34,7 +34,7 @@ A smart chatbot that understands natural language queries and recommends movies 
 
 ```bash
 git clone https://github.com/yashwantalli/nlp.git
-cd your-repo
+cd nlp
 ```
 
 ---
