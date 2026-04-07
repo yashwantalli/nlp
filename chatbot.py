@@ -98,12 +98,20 @@ def convert(text):
 
 def get_director(text):
     try:
-        data = ast.literal_eval(text)
-        if isinstance(data, list):
-            return [i['name'] for i in data if isinstance(i, dict) and i.get('job') == 'Director']
-    except:
-        pass
-    return []
+        # Case 1: already a list
+        if isinstance(text, list):
+            data = text
+        else:
+            data = ast.literal_eval(text)
+
+        return [
+            i['name']
+            for i in data
+            if isinstance(i, dict) and i.get('job') == 'Director'
+        ]
+
+    except Exception as e:
+        return []
 
 for col in ["genres", "keywords", "cast"]:
     movies[col] = movies[col].apply(convert)
@@ -184,10 +192,12 @@ def extract_top_k(query):
     return 5
 
 import requests
-
+import os
+from dotenv import load_dotenv
+load_dotenv()
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
 HEADERS = {
-    "Authorization": "Bearer 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"
+    "Authorization": "Bearer " + os.getenv("HF_TOKEN") 
 }
 
 def query_llm(prompt):
