@@ -194,10 +194,15 @@ def extract_top_k(query):
 import requests
 import os
 from dotenv import load_dotenv
+
 load_dotenv()
+
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
+
+token = os.getenv("HF_TOKEN", "")
+
 HEADERS = {
-    "Authorization": "Bearer " + os.getenv("HF_TOKEN") 
+    "Authorization": f"Bearer {token}"
 }
 
 def query_llm(prompt):

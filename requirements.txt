@@ -5,6 +5,7 @@ scikit-learn
 sentence-transformers
 transformers
 torch
+torchvision
 faiss-cpu
 python-dotenv
 rapidfuzz
