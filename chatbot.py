@@ -1,6 +1,17 @@
+import logging
 import pandas as pd 
 import ast
-movies=pd.read_csv("cleaned_movies.csv")
+
+logger = logging.getLogger(__name__)
+
+try:
+    movies=pd.read_csv("cleaned_movies.csv")
+except FileNotFoundError:
+    logger.error("cleaned_movies.csv not found. Please ensure the dataset file exists.")
+    raise
+except pd.errors.ParserError as e:
+    logger.error("Failed to parse cleaned_movies.csv: %s", e)
+    raise
 
 
 
@@ -91,8 +102,8 @@ def convert(text):
         elif isinstance(data, list):
             return data
         
-    except:
-        pass
+    except (ValueError, SyntaxError) as e:
+        logger.debug("Could not parse column value: %s — %s", text[:80] if isinstance(text, str) else text, e)
     
     return []
 
@@ -110,7 +121,8 @@ def get_director(text):
             if isinstance(i, dict) and i.get('job') == 'Director'
         ]
 
-    except Exception as e:
+    except (ValueError, SyntaxError) as e:
+        logger.debug("Could not parse crew data: %s", e)
         return []
 
 for col in ["genres", "keywords", "cast"]:
@@ -120,9 +132,20 @@ movies["crew"] = movies["crew"].apply(get_director)
 
 from sentence_transformers import SentenceTransformer
 
-model = SentenceTransformer('all-MiniLM-L6-v2')
+try:
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+except Exception as e:
+    logger.error("Failed to load SentenceTransformer model: %s", e)
+    raise RuntimeError("Could not load the sentence-transformer model. Check your installation.") from e
 
-movie_embeddings = model.encode(movies['combined'].tolist(),show_progress_bar=True)
+try:
+    movie_embeddings = model.encode(movies['combined'].tolist(),show_progress_bar=True)
+except KeyError:
+    logger.error("'combined' column missing from dataset. Ensure cleaned_movies.csv is preprocessed correctly.")
+    raise
+except Exception as e:
+    logger.error("Failed to encode movie embeddings: %s", e)
+    raise
 
 
 from sklearn.metrics.pairwise import cosine_similarity
@@ -170,7 +193,7 @@ def hybrid_search(movies, filters, query=None, top_k=5):
         if not relaxed_df.empty:
             return relaxed_df.head(min(top_k, len(relaxed_df)))
         
-        print("No exact match, relaxing filters...")
+        logger.info("No exact match found, falling back to semantic search.")
 
         if query:
             return semantic_search(query, top_k)
@@ -200,6 +223,9 @@ load_dotenv()
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
 
 token = os.getenv("HF_TOKEN", "")
+if not token:
+    logger.warning("HF_TOKEN is not set. LLM-based filter extraction will not work. "
+                   "Create a .env file with HF_TOKEN=your_token.")
 
 HEADERS = {
     "Authorization": f"Bearer {token}"
@@ -213,17 +239,35 @@ def query_llm(prompt):
             json={
                 "inputs": prompt,
                 "parameters": {"max_new_tokens": 100}
-            }
+            },
+            timeout=15,
         )
+
+        if response.status_code != 200:
+            logger.warning("HuggingFace API returned status %s: %s",
+                           response.status_code, response.text[:200])
+            return ""
 
         result = response.json()
 
-        if isinstance(result, list):
-            return result[0]["generated_text"]
+        if isinstance(result, dict) and "error" in result:
+            logger.warning("HuggingFace API error: %s", result["error"])
+            return ""
 
+        if isinstance(result, list) and len(result) > 0:
+            return result[0].get("generated_text", "")
+
+        logger.warning("Unexpected LLM response format: %s", str(result)[:200])
         return ""
 
-    except:
+    except requests.exceptions.Timeout:
+        logger.warning("HuggingFace API request timed out.")
+        return ""
+    except requests.exceptions.ConnectionError as e:
+        logger.warning("Could not connect to HuggingFace API: %s", e)
+        return ""
+    except (requests.exceptions.RequestException, ValueError, KeyError) as e:
+        logger.warning("LLM query failed: %s", e)
         return ""
 
 def extract_filters(query):
@@ -294,13 +338,21 @@ Format:
 
     response = query_llm(prompt)
 
+    if not response:
+        logger.debug("LLM returned empty response, falling back to regex extraction.")
+        return extract_filters(query)
+
     try:
         start = response.find("{")
         end = response.rfind("}") + 1
+        if start == -1 or end == 0 or start >= end:
+            logger.debug("No JSON object found in LLM response: %s", response[:200])
+            return extract_filters(query)
         filters = json.loads(response[start:end])
         return filters
 
-    except:
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.debug("Failed to parse LLM response as JSON (%s), falling back to regex.", e)
         return extract_filters(query)
     
 
@@ -407,7 +459,7 @@ def chatbot(query):
 
 
     if not is_movie_query(query) and not is_followup_query(query):
-        return ["Sorry, I can only help with movie-related queries."]
+        return "Sorry, I can only help with movie-related queries."
 
     if is_new_query(query):
         memory = {key: None for key in memory}
@@ -427,17 +479,17 @@ def chatbot(query):
         results = hybrid_search(movies, memory, None, top_k)
     else:
         results = hybrid_search(movies, memory, query, top_k)
-    if isinstance(results, list):
-        return results
-    
-    if isinstance(results,str):
+    if isinstance(results, (list, str)):
         return results
 
-    if "title" in results:
-        titles = results["title"].tolist()
+    if "title" not in results.columns:
+        logger.warning("Search results missing 'title' column.")
+        return "No movies found for your query."
+
+    titles = results["title"].tolist()
 
     if not titles:
-        return ["No movies found for your query."]
+        return "No movies found for your query."
 
     # dynamic message
     if filters["actor"]:
