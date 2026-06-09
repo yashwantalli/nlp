@@ -91,7 +91,7 @@ def convert(text):
         elif isinstance(data, list):
             return data
         
-    except:
+    except (ValueError, SyntaxError):
         pass
     
     return []
@@ -193,19 +193,31 @@ def extract_top_k(query):
 
 import requests
 import os
+import logging
 from dotenv import load_dotenv
 
 load_dotenv()
 
+logger = logging.getLogger(__name__)
+
 API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-small"
 
-token = os.getenv("HF_TOKEN", "")
+MAX_QUERY_LENGTH = 500
+
+_token = os.getenv("HF_TOKEN")
+if not _token:
+    logger.warning(
+        "HF_TOKEN is not set. LLM features will be unavailable. "
+        "Add HF_TOKEN to your .env file."
+    )
 
 HEADERS = {
-    "Authorization": f"Bearer {token}"
-}
+    "Authorization": f"Bearer {_token}"
+} if _token else {}
 
 def query_llm(prompt):
+    if not _token:
+        return ""
     try:
         response = requests.post(
             API_URL,
@@ -213,17 +225,20 @@ def query_llm(prompt):
             json={
                 "inputs": prompt,
                 "parameters": {"max_new_tokens": 100}
-            }
+            },
+            timeout=15,
         )
+        response.raise_for_status()
 
         result = response.json()
 
-        if isinstance(result, list):
-            return result[0]["generated_text"]
+        if isinstance(result, list) and result:
+            return result[0].get("generated_text", "")
 
         return ""
 
-    except:
+    except (requests.RequestException, ValueError, KeyError) as exc:
+        logger.warning("LLM request failed: %s", exc)
         return ""
 
 def extract_filters(query):
@@ -297,10 +312,12 @@ Format:
     try:
         start = response.find("{")
         end = response.rfind("}") + 1
+        if start == -1 or end == 0:
+            return extract_filters(query)
         filters = json.loads(response[start:end])
         return filters
 
-    except:
+    except (json.JSONDecodeError, ValueError):
         return extract_filters(query)
     
 
