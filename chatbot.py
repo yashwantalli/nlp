@@ -53,7 +53,8 @@ def get_director(text):
 for col in ["genres", "keywords", "cast"]:
     movies[col] = movies[col].apply(convert)
 
-movies["crew"] = movies["crew"].apply(get_director)
+# crew column in cleaned_movies.csv is already pre-processed as director name lists
+movies["crew"] = movies["crew"].apply(convert)
 
 # Lowercase genre lists for matching
 movies["genres_lower"] = movies["genres"].apply(
