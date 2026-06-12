@@ -9,3 +9,4 @@ torchvision
 faiss-cpu
 python-dotenv
 rapidfuzz
+requests
